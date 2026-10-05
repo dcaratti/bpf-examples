@@ -32,6 +32,11 @@ metrics:
                 5: "udp-socket-enqueued"
                 6: "tcp-socket-read"
                 7: "udp-socket-read"
+                8: "macvlan-broadcast"
+                9: "macvlan-process-broadcast"
+                10: "macvlan-broadcast-enqueue"
+                11: "macvlan-multicast-rx"
+                12: "macvlan-broadcast-one"
         - name: bucket
           size: 2
           decoders:

@@ -189,6 +189,16 @@ static const char *hook_to_str(enum netstacklat_hook hook)
 		return "tcp-socket-read";
 	case NETSTACKLAT_HOOK_UDP_SOCK_READ:
 		return "udp-socket-read";
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST:
+		return "macvlan-broadcast";
+	case NETSTACKLAT_HOOK_MACVLAN_PROCESS_BROADCAST:
+		return "macvlan-process-broadcast";
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST_ENQUEUE:
+		return "macvlan-broadcast-enqueue";
+	case NETSTACKLAT_HOOK_MACVLAN_MULTICAST_RX:
+		return "macvlan-multicast-rx";
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST_ONE:
+		return "macvlan-broadcast-one";
 	default:
 		return "invalid";
 	}
@@ -223,6 +233,16 @@ static const char *hook_to_description(enum netstacklat_hook hook)
 		return "packet payload has been read from TCP socket, i.e. delivered to user space";
 	case NETSTACKLAT_HOOK_UDP_SOCK_READ:
 		return "packet payload has been read from UDP socket, i.e. delivered to user space";
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST:
+		return "packet is being cloned and delivered to a macvlan interface as multicast/broadcast";
+	case NETSTACKLAT_HOOK_MACVLAN_PROCESS_BROADCAST:
+		return "oldest packet still waiting on a macvlan port's deferred broadcast/multicast queue when it starts being drained";
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST_ENQUEUE:
+		return "packet is being placed on a macvlan port's deferred broadcast/multicast queue";
+	case NETSTACKLAT_HOOK_MACVLAN_MULTICAST_RX:
+		return "packet is being evaluated for multicast/broadcast flooding to macvlan interfaces";
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST_ONE:
+		return "packet clone is being delivered to one specific matching macvlan interface";
 	default:
 		return "not a valid hook";
 	}
@@ -263,6 +283,28 @@ static void hook_to_progs(struct hook_prog_collection *progs,
 		break;
 	case NETSTACKLAT_HOOK_UDP_SOCK_READ:
 		progs->progs[0] = obj->progs.netstacklat_skb_consume_udp;
+		progs->nprogs = 1;
+		break;
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST:
+		progs->progs[0] = obj->progs.netstacklat_macvlan_broadcast;
+		progs->nprogs = 1;
+		break;
+	case NETSTACKLAT_HOOK_MACVLAN_PROCESS_BROADCAST:
+		progs->progs[0] =
+			obj->progs.netstacklat_macvlan_process_broadcast;
+		progs->nprogs = 1;
+		break;
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST_ENQUEUE:
+		progs->progs[0] =
+			obj->progs.netstacklat_macvlan_broadcast_enqueue;
+		progs->nprogs = 1;
+		break;
+	case NETSTACKLAT_HOOK_MACVLAN_MULTICAST_RX:
+		progs->progs[0] = obj->progs.netstacklat_macvlan_multicast_rx;
+		progs->nprogs = 1;
+		break;
+	case NETSTACKLAT_HOOK_MACVLAN_BROADCAST_ONE:
+		progs->progs[0] = obj->progs.netstacklat_macvlan_broadcast_one;
 		progs->nprogs = 1;
 		break;
 	default:

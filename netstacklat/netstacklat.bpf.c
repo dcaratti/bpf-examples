@@ -43,6 +43,15 @@ struct sk_buff___old {
 	__u8 mono_delivery_time: 1;
 } __attribute__((preserve_access_index));
 
+struct work_struct {
+	int __opaque;
+} __attribute__((preserve_access_index));
+
+struct macvlan_port {
+	struct sk_buff_head bc_queue;
+	struct work_struct bc_work;
+} __attribute__((preserve_access_index));
+
 struct tcp_sock_ooo_range {
 	u32 prev_n_ooopkts;
 	u32 ooo_seq_end;
@@ -258,6 +267,36 @@ static void record_skb_latency(struct sk_buff *skb, struct sock *sk, enum netsta
 		key.ifindex = skb->skb_iif;
 
 	record_latency_since(skb->tstamp, &key);
+}
+
+static void record_skb_latency_probed(struct sk_buff *skb, enum netstacklat_hook hook)
+{
+	struct hist_key key = { .hook = hook };
+	u32 ifindex = 0;
+	ktime_t tstamp = 0;
+
+	if (!skb)
+		return;
+
+	if (bpf_core_field_exists(skb->tstamp_type)) {
+		if (BPF_CORE_READ_BITFIELD_PROBED(skb, tstamp_type) > 0)
+			return;
+	} else {
+		struct sk_buff___old *skb_old = (void *)skb;
+
+		if (BPF_CORE_READ_BITFIELD_PROBED(skb_old, mono_delivery_time) > 0)
+			return;
+	}
+
+	bpf_core_read(&ifindex, sizeof(ifindex), &skb->skb_iif);
+	if (!filter_ifindex(ifindex))
+		return;
+
+	if (user_config.groupby_ifindex)
+		key.ifindex = ifindex;
+
+	bpf_core_read(&tstamp, sizeof(tstamp), &skb->tstamp);
+	record_latency_since(tstamp, &key);
 }
 
 static bool filter_pid(u32 pid)
@@ -579,5 +618,53 @@ int BPF_PROG(netstacklat_skb_consume_udp, struct sock *sk, struct sk_buff *skb,
 {
 	record_socket_latency(sk, skb, skb->tstamp,
 			      NETSTACKLAT_HOOK_UDP_SOCK_READ);
+	return 0;
+}
+
+SEC("fentry/macvlan_broadcast_enqueue")
+int BPF_PROG(netstacklat_macvlan_broadcast_enqueue, void *port, void *src,
+	     struct sk_buff *skb)
+{
+	record_skb_latency(skb, NULL, NETSTACKLAT_HOOK_MACVLAN_BROADCAST_ENQUEUE);
+	return 0;
+}
+
+SEC("fentry/macvlan_multicast_rx")
+int BPF_PROG(netstacklat_macvlan_multicast_rx, void *port, void *src,
+	     struct sk_buff *skb)
+{
+	record_skb_latency(skb, NULL, NETSTACKLAT_HOOK_MACVLAN_MULTICAST_RX);
+	return 0;
+}
+
+SEC("fentry/macvlan_broadcast")
+int BPF_PROG(netstacklat_macvlan_broadcast, struct sk_buff *skb, void *port,
+	     void *src, int mode)
+{
+	record_skb_latency(skb, NULL, NETSTACKLAT_HOOK_MACVLAN_BROADCAST);
+	return 0;
+}
+
+SEC("fentry/macvlan_broadcast_one")
+int BPF_PROG(netstacklat_macvlan_broadcast_one, struct sk_buff *skb,
+	     void *vlan, void *eth, bool local)
+{
+	record_skb_latency(skb, NULL, NETSTACKLAT_HOOK_MACVLAN_BROADCAST_ONE);
+	return 0;
+}
+
+SEC("fentry/macvlan_process_broadcast")
+int BPF_PROG(netstacklat_macvlan_process_broadcast, struct work_struct *w)
+{
+	struct macvlan_port *port = container_of(w, struct macvlan_port, bc_work);
+	struct sk_buff *skb = NULL;
+	u32 qlen = 0;
+
+	bpf_core_read(&qlen, sizeof(qlen), &port->bc_queue.qlen);
+	if (qlen == 0)
+		return 0;
+
+	bpf_core_read(&skb, sizeof(skb), &port->bc_queue.next);
+	record_skb_latency_probed(skb, NETSTACKLAT_HOOK_MACVLAN_PROCESS_BROADCAST);
 	return 0;
 }
